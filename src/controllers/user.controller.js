@@ -3,6 +3,7 @@ import { User } from "../models/user.model.js";
 import { ApiError } from "../utils/apiError.js";
 import { uploadOnCloudinary } from "../utils/fileUpload.js";
 import { ApiResponse } from "../utils/apiResponse.js";
+import jwt from "jsonwebtoken"
 
 export const registerUser = asyncHandler(async (req, res) => {
   const { username, password, fullname, email } = req.body;
@@ -73,7 +74,7 @@ const generateAccessAndRefreshToken = async (userId) => {
 export const loginUser = asyncHandler(async (req, res) => {
   const { email, username, password } = req.body;
 
-  if (!email || !username) {
+  if (!email && !username) {
     throw new ApiError(400, "Username / email required");
   }
   const user = await User.findOne({
@@ -134,4 +135,60 @@ const options = {
   .status(200)
   .clearCookie("accessToken", options)
   .clearCookie("refreshToken", options)
+  .json(
+      new ApiResponse(
+        200,
+        {},
+        "User logout successfully"
+      )
+    )
+});
+
+export const refreshAccessToken = asyncHandler(async (req, res) =>{
+    const token = req.cookies.refreshToken || req.body.refreshToken;
+    if(!token)
+    {
+      throw new ApiError(401, "token is missing");
+    }
+
+   try {
+     const decodedToken = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+ 
+     if(!decodedToken){
+       throw new ApiError(401, "token is invalid");
+     }
+     
+     const user = await User.findById(decodedToken._id);
+     
+     if(!user)
+       {
+       throw new ApiError(401, "token is invalid");
+     }
+     
+     if(token !== user?.refreshToken)
+       {
+       throw new ApiError(401, "token is invalid");
+     }
+     const options = {
+     httpOnly: true,
+     secure: true,
+   };
+ 
+   const {accessToken, refreshToken} = await generateAccessAndRefreshToken(user._id);
+ 
+   return res
+   .status(200)
+   .cookie("accessToken", accessToken, options)
+   .cookie("accessToken", refreshToken, options)
+   .json(
+       new ApiResponse(
+         200,
+         {accessToken, refreshToken},
+         "Access token refreshed"
+       )
+     )
+   } catch (error) {
+      throw new ApiError(401, error?.message || "Something went wrong");
+      
+   }
 })
